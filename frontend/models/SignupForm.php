@@ -1,6 +1,8 @@
 <?php
+
 namespace frontend\models;
 
+use yii\base\Exception;
 use yii\base\Model;
 use common\models\User;
 
@@ -46,15 +48,19 @@ class SignupForm extends Model
         if (!$this->validate()) {
             return null;
         }
-        
+
         $user = new User();
         $user->username = $this->username;
         $user->email = $this->email;
-        $user->setPassword($this->password);
-        $user->generateAuthKey();
-        $user->generateApiKey();
-        $user->generateSignUpCode();
-        
+
+        try {
+            $user->setPassword($this->password);
+        } catch (Exception $e) {
+            //Отлов исключений
+        }
+
+        $user->generateKeys();
+
         return $user->save() ? $user : null;
     }
 }

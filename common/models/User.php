@@ -1,7 +1,9 @@
 <?php
+
 namespace common\models;
 
 use Yii;
+use yii\base\Exception;
 use yii\base\NotSupportedException;
 use yii\behaviors\TimestampBehavior;
 use yii\db\ActiveRecord;
@@ -27,6 +29,7 @@ use yii\web\IdentityInterface;
 class User extends ActiveRecord implements IdentityInterface
 {
     const STATUS_DELETED = 0;
+    const STATUS_DISABLED = 5;
     const STATUS_ACTIVE = 10;
 
 
@@ -36,27 +39,6 @@ class User extends ActiveRecord implements IdentityInterface
     public static function tableName()
     {
         return '{{%user}}';
-    }
-
-    /**
-     * {@inheritdoc}
-     */
-    public function behaviors()
-    {
-        return [
-            TimestampBehavior::className(),
-        ];
-    }
-
-    /**
-     * {@inheritdoc}
-     */
-    public function rules()
-    {
-        return [
-            ['status', 'default', 'value' => self::STATUS_ACTIVE],
-            ['status', 'in', 'range' => [self::STATUS_ACTIVE, self::STATUS_DELETED]],
-        ];
     }
 
     /**
@@ -116,9 +98,46 @@ class User extends ActiveRecord implements IdentityInterface
             return false;
         }
 
-        $timestamp = (int) substr($token, strrpos($token, '_') + 1);
+        $timestamp = (int)substr($token, strrpos($token, '_') + 1);
         $expire = Yii::$app->params['user.passwordResetTokenExpire'];
         return $timestamp + $expire >= time();
+    }
+
+    /**
+     * @param $code
+     * @return User|null
+     */
+    public static function activateByCode($code)
+    {
+        $user = self::findOne(['sign_up_code' => $code, 'status' => self::STATUS_DISABLED]);
+
+        if ($user === null) {
+            return null;
+        } else {
+            $user->status = self::STATUS_ACTIVE;
+            return $user->save() ? $user : null;
+        }
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    public function behaviors()
+    {
+        return [
+            TimestampBehavior::className(),
+        ];
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    public function rules()
+    {
+        return [
+            ['status', 'default', 'value' => self::STATUS_DISABLED],
+            ['status', 'in', 'range' => [self::STATUS_ACTIVE, self::STATUS_DELETED, self::STATUS_DISABLED]],
+        ];
     }
 
     /**
@@ -132,17 +151,17 @@ class User extends ActiveRecord implements IdentityInterface
     /**
      * {@inheritdoc}
      */
-    public function getAuthKey()
+    public function validateAuthKey($authKey)
     {
-        return $this->auth_key;
+        return $this->getAuthKey() === $authKey;
     }
 
     /**
      * {@inheritdoc}
      */
-    public function validateAuthKey($authKey)
+    public function getAuthKey()
     {
-        return $this->getAuthKey() === $authKey;
+        return $this->auth_key;
     }
 
     /**
@@ -160,6 +179,7 @@ class User extends ActiveRecord implements IdentityInterface
      * Generates password hash from password and sets it to the model
      *
      * @param string $password
+     * @throws \yii\base\Exception
      */
     public function setPassword($password)
     {
@@ -167,20 +187,46 @@ class User extends ActiveRecord implements IdentityInterface
     }
 
     /**
-     * Generates "remember me" authentication key
+     *
+     * Генерация всех спец. ключей для юзера
      */
-    public function generateAuthKey()
+    public function generateKeys()
+    {
+        try {
+            $this->generateAuthKey();
+            $this->generateApiKey();
+            $this->generateSignUpCode();
+        } catch (Exception $e) {
+            //Отлов исключений
+        }
+    }
+
+    /**
+     * @throws Exception
+     *
+     * Генерация ключа для авторизации по кукам
+     */
+    protected function generateAuthKey()
     {
         $this->auth_key = Yii::$app->security->generateRandomString();
     }
 
-    public function generateApiKey()
+    /**
+     * @throws Exception
+     *
+     * Генерация ключа для взаимодействия с API
+     */
+    protected function generateApiKey()
     {
         $this->api_key = Yii::$app->security->generateRandomString(16);
     }
 
-
-    public function generateSignUpCode()
+    /**
+     * @throws Exception
+     *
+     * Генерация ключа для подтверждения авторизации
+     */
+    protected function generateSignUpCode()
     {
         $this->sign_up_code = Yii::$app->security->generateRandomString(32);
     }
@@ -199,5 +245,21 @@ class User extends ActiveRecord implements IdentityInterface
     public function removePasswordResetToken()
     {
         $this->password_reset_token = null;
+    }
+
+    /**
+     *
+     * Отправка письма с кодом активации
+     */
+    public function sendSignUpCode()
+    {
+        $activationLink = Yii::$app->params['siteDomain'] . "/site/activate?code={$this->sign_up_code}";
+        Yii::$app->mailer->compose()
+            ->setFrom(Yii::$app->params['supportEmail'])
+            ->setTo($this->email)
+            ->setSubject('Активация аккаунта')
+            ->setTextBody("Перейдите по ссылке для активации аккаунта $activationLink")
+            ->setHtmlBody("Перейдите по <a href=\"$activationLink\">ссылке</a> для активации аккаунта")
+            ->send();
     }
 }
