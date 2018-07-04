@@ -126,6 +126,7 @@ class User extends ActiveRecord implements IdentityInterface
         } else {
             $user->status = self::STATUS_ACTIVE;
             $user->balance += Yii::$app->params['activateBalanceGift'];
+            $user->sign_up_code = null;
             return $user->save() ? $user : null;
         }
     }
