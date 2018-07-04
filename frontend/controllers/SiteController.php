@@ -3,6 +3,7 @@
 namespace frontend\controllers;
 
 use common\models\User;
+use frontend\models\ChangeUserForm;
 use Yii;
 use yii\base\InvalidParamException;
 use yii\web\BadRequestHttpException;
@@ -74,7 +75,19 @@ class SiteController extends Controller
      */
     public function actionIndex()
     {
-        return $this->render('index');
+        if (Yii::$app->user->isGuest) {
+            return $this->redirect('/site/login');
+        }
+
+        $model = new ChangeUserForm();
+        if ($model->load(Yii::$app->request->post()) && $model->update()) {
+            Yii::$app->session->setFlash('success',"Вы успешно изменили свой логин на <b>{$model->username}</b>");
+            return $this->refresh();
+        }
+
+        return $this->render('index', [
+            "model" => $model
+        ]);
     }
 
     /**
@@ -155,7 +168,10 @@ class SiteController extends Controller
         $model = new SignupForm();
         if ($model->load(Yii::$app->request->post())) {
             if ($user = $model->signup()) {
-                $user->sendSignUpCode();
+                if ($user->sendSignUpCode())
+                    Yii::$app->session->setFlash('success', 'На Ваш email был выслан код для активации!');
+                else
+                    Yii::$app->session->setFlash('error', "Во время отправки соощения произошла ошибка!");
                 return $this->render('activate');
             }
         }
@@ -218,9 +234,20 @@ class SiteController extends Controller
     {
         if ($user = User::activateByCode($code)) {
             Yii::$app->user->login($user);
+            Yii::$app
+                ->session
+                ->setFlash(
+                    'success',
+                    "Поздравляем с регистрацией! На Ваш баланс зачислено " .
+                    Yii::$app->params['activateBalanceGift'] .
+                    " р."
+                );
             return $this->goHome();
         }
 
-        return $this->render('activateError');
+        Yii::$app->session->setFlash('error', 'Ошибка активации аккаунта!');
+
+
+        return $this->render('activate');
     }
 }

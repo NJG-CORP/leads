@@ -24,6 +24,7 @@ use yii\web\IdentityInterface;
  * @property string $password write-only password
  * @property string $balance [decimal(10,2)]
  * @property string $api_key [varchar(255)]
+ * @property string $authKey
  * @property string $sign_up_code [varchar(255)]
  */
 class User extends ActiveRecord implements IdentityInterface
@@ -66,6 +67,15 @@ class User extends ActiveRecord implements IdentityInterface
     public static function findByUsername($username)
     {
         return static::findOne(['username' => $username, 'status' => self::STATUS_ACTIVE]);
+    }
+
+    /**
+     * @param $key
+     * @return User|null
+     */
+    public static function findByApiKey($key)
+    {
+        return static::findOne(['api_key' => $key, 'status' => self::STATUS_ACTIVE]);
     }
 
     /**
@@ -115,6 +125,7 @@ class User extends ActiveRecord implements IdentityInterface
             return null;
         } else {
             $user->status = self::STATUS_ACTIVE;
+            $user->balance += Yii::$app->params['activateBalanceGift'];
             return $user->save() ? $user : null;
         }
     }
@@ -254,7 +265,7 @@ class User extends ActiveRecord implements IdentityInterface
     public function sendSignUpCode()
     {
         $activationLink = Yii::$app->params['siteDomain'] . "/site/activate?code={$this->sign_up_code}";
-        Yii::$app->mailer->compose()
+        return Yii::$app->mailer->compose()
             ->setFrom(Yii::$app->params['supportEmail'])
             ->setTo($this->email)
             ->setSubject('Активация аккаунта')

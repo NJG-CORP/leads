@@ -48,7 +48,7 @@ class SiteController extends Controller
     {
         return [
             'error' => [
-                'class' => 'yii\web\ErrorAction',
+                'class' => 'backend\models\ApiError',
             ],
         ];
     }
